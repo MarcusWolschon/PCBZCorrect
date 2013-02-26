@@ -3,6 +3,7 @@
  */
 package biz.wolschon.cnc.pcbzcorrect;
 
+import java.awt.HeadlessException;
 import java.awt.geom.Rectangle2D;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -36,115 +37,134 @@ public class Main {
 	public static void main(String[] args) {
 		boolean graphical = false;
 		// parse arguments
-		if (args.length == 0) {
-			System.out.println("input: g-code for milling a PCB");
-			System.out.println("program asks for Z-height of PCB at different points");
-			System.out.println("output: g-code for milling a PCB with z=0 being the surface of the uneven/warped PCB");
-			System.out.println("usage: java -jar pcbzcorrect <in.gcode>");
-			JFileChooser chooser = new JFileChooser();
-			if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
-				return;
-			} else {
-				args = new String[] {chooser.getSelectedFile().getAbsolutePath()};
-				graphical = true;
-			}
-		}
-		selftest();
-
-		// read dimensions and unit
-		File infile = new File(args[0]);
-		System.out.println("determining dimensions of " + infile.getName() + "...");
-		Rectangle2D max  = null;
 		try {
-		    max = getMaxDimensions(infile);
-		} catch (Exception e) {
-			System.err.println("cannot determine maximum dimensions");
-			PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
-			e.printStackTrace(out);
-			out.flush();
-			out.close();
-			return;
-		}
-		System.out.println("dimensions: "
-		+ "(" + max.getMinX() + "," + max.getMinY() + unit + ") - "
-		+ "(" + max.getMaxX() + "," + max.getMaxY() + unit + ")"
-		+ "(width=" + max.getWidth() + ", height=" + max.getHeight() + unit + ")");
-
-		double maxdist = distance(max.getMinX(), max.getMinY(), max.getMaxX(), max.getMaxY()) / 6;
-
-		// ask for Z-probe at different points
-		final int xsteps = 3;
-		final int ysteps = 3;
-		System.out.println("Using " + xsteps + " x " +ysteps + " z probe values");
-		if (unit != null && unit.equals(UNIT_INCH)) {
-			System.out.println("set unit to INCH using: G20");
-			if (graphical) {
-				JOptionPane.showMessageDialog(null, "set unit to INCH using: G20");
-			}
-		} else if (unit != null && unit.equals(UNIT_INCH)) {
-			System.out.println("set unit to MILLIMETER using: G21");
-			if (graphical) {
-				JOptionPane.showMessageDialog(null, "set unit to MILLIMETER using: G21");
-			}
-		} else {
-			System.err.println("No unit found (G20 or G21) in g-code");
-			unit = "";
-		}
-		final double[] z = new double[xsteps * ysteps];
-		try {
-			BufferedReader inputReader = new BufferedReader(new InputStreamReader(System.in));
-			for (int xi = 0; xi < xsteps; xi++) {
-				for (int yi = 0; yi < ysteps; yi++) {
-					Double zValue = null;
-
-					while (zValue == null) {
-						String message = "Z probe result at:  G1 Z10 G1 X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " G31 Z-10F100  ";
-						System.out.print(message);	
-						try {
-							if (graphical) {
-								zValue = Double.parseDouble(JOptionPane.showInputDialog(message));
-							} else {
-								zValue = Double.parseDouble(inputReader.readLine());
-							}
-						} catch (NumberFormatException e) {
-							System.err.println("Not a number in g-code format. Please use '.' as decimal point.");
-						}
-					}
-					z[xi + xsteps*yi] = zValue;
+			if (args.length == 0) {
+				System.out.println("input: g-code for milling a PCB");
+				System.out.println("program asks for Z-height of PCB at different points");
+				System.out.println("output: g-code for milling a PCB with z=0 being the surface of the uneven/warped PCB");
+				System.out.println("usage: java -jar pcbzcorrect <in.gcode>");
+				JFileChooser chooser = new JFileChooser();
+				if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
+					JOptionPane.showMessageDialog(null, "aborted!");
+					return;
+				} else {
+					args = new String[] {chooser.getSelectedFile().getAbsolutePath()};
+					graphical = true;
 				}
 			}
-		} catch (IOException e) {
-			System.err.println("cannot read z probes from user");
-			PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
-			e.printStackTrace(out);
-			out.flush();
-			out.close();
-			return;
-		}
+			selftest();
 
-		try {
-			File outfile = new File(infile.getAbsolutePath() + "_zproved.ngc");
-			if (outfile.exists()) {
-				System.err.println("overwriting output file!");
-				outfile.delete();
+			// read dimensions and unit
+			File infile = new File(args[0]);
+			System.out.println("determining dimensions of " + infile.getName() + "...");
+			Rectangle2D max  = null;
+			try {
+			    max = getMaxDimensions(infile);
+			} catch (Exception e) {
+				System.err.println("cannot determine maximum dimensions");
+				PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
+				e.printStackTrace(out);
+				out.flush();
+				out.close();
+				if (graphical) {
+					JOptionPane.showMessageDialog(null, "cannot determine maximum dimensions [" + e.getClass().getName() + "] " + e.getMessage());
+				}
+				return;
 			}
-			System.out.println("Modifying g-code. Output to " + outfile.getName() + "...");
-			ModifyGCode(infile, outfile, z, max, xsteps, ysteps, maxdist);
-		} catch (IOException e) {
-			System.err.println("ccannot modif g-code");
-			PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
-			e.printStackTrace(out);
-			out.flush();
-			out.close();
+			String msg = "dimensions: "
+			+ "(" + max.getMinX() + "," + max.getMinY() + unit + ") - "
+			+ "(" + max.getMaxX() + "," + max.getMaxY() + unit + ")"
+			+ "(width=" + max.getWidth() + ", height=" + max.getHeight() + unit + ")";
+			System.out.println(msg);
 			if (graphical) {
-				JOptionPane.showMessageDialog(null, "cannot modify g-code");
+				JOptionPane.showMessageDialog(null, msg);
 			}
-			return;
-		}
-		
-		System.out.println("done!");
-		if (graphical) {
-			JOptionPane.showMessageDialog(null, "done!");
+
+			double maxdist = distance(max.getMinX(), max.getMinY(), max.getMaxX(), max.getMaxY()) / 6;
+
+			// ask for Z-probe at different points
+			final int xsteps = 3;
+			final int ysteps = 3;
+			System.out.println("Using " + xsteps + " x " +ysteps + " z probe values");
+			if (unit != null && unit.equals(UNIT_INCH)) {
+				System.out.println("set unit to INCH using: G20");
+				if (graphical) {
+					JOptionPane.showMessageDialog(null, "set unit to INCH using: G20");
+				}
+			} else if (unit != null && unit.equals(UNIT_INCH)) {
+				System.out.println("set unit to MILLIMETER using: G21");
+				if (graphical) {
+					JOptionPane.showMessageDialog(null, "set unit to MILLIMETER using: G21");
+				}
+			} else {
+				System.err.println("No unit found (G20 or G21) in g-code");
+				unit = "";
+			}
+			final double[] z = new double[xsteps * ysteps];
+			try {
+				BufferedReader inputReader = new BufferedReader(new InputStreamReader(System.in));
+				for (int xi = 0; xi < xsteps; xi++) {
+					for (int yi = 0; yi < ysteps; yi++) {
+						Double zValue = null;
+
+						while (zValue == null) {
+							String message = "Z probe result at:  G1 Z10 G1 X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " G31 Z-10F100  ";
+							System.out.print(message);	
+							try {
+								if (graphical) {
+									zValue = Double.parseDouble(JOptionPane.showInputDialog(message));
+								} else {
+									zValue = Double.parseDouble(inputReader.readLine());
+								}
+							} catch (NumberFormatException e) {
+								System.err.println("Not a number in g-code format. Please use '.' as decimal point.");
+							}
+						}
+						z[xi + xsteps*yi] = zValue;
+					}
+				}
+			} catch (IOException e) {
+				System.err.println("cannot read z probes from user");
+				PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
+				e.printStackTrace(out);
+				out.flush();
+				out.close();
+
+				if (graphical) {
+					JOptionPane.showMessageDialog(null, "cannot read z probes from user [" + e.getClass().getName() + "] " + e.getMessage());
+				}
+				return;
+			}
+
+			try {
+				File outfile = new File(infile.getAbsolutePath() + "_zproved.ngc");
+				if (outfile.exists()) {
+					System.err.println("overwriting output file!");
+					outfile.delete();
+				}
+				System.out.println("Modifying g-code. Output to " + outfile.getName() + "...");
+				ModifyGCode(infile, outfile, z, max, xsteps, ysteps, maxdist);
+			} catch (IOException e) {
+				System.err.println("ccannot modif g-code");
+				PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
+				e.printStackTrace(out);
+				out.flush();
+				out.close();
+				if (graphical) {
+					JOptionPane.showMessageDialog(null, "cannot modify g-code [" + e.getClass().getName() + "] " + e.getMessage());
+				}
+				return;
+			}
+			
+			System.out.println("done!");
+			if (graphical) {
+				JOptionPane.showMessageDialog(null, "done!");
+			}
+		} catch (HeadlessException e) {
+			e.printStackTrace();
+			if (graphical) {
+				JOptionPane.showMessageDialog(null, "Error! [" + e.getClass().getName() + "] " + e.getMessage());
+			}
 		}
 	}
 	private static void assertEquals(double expected, double value) {

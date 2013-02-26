@@ -46,6 +46,7 @@ public class Main {
 				return;
 			} else {
 				args = new String[] {chooser.getSelectedFile().getAbsolutePath()};
+				graphical = true;
 			}
 		}
 		selftest();
@@ -77,8 +78,14 @@ public class Main {
 		System.out.println("Using " + xsteps + " x " +ysteps + " z probe values");
 		if (unit != null && unit.equals(UNIT_INCH)) {
 			System.out.println("set unit to INCH using: G20");
+			if (graphical) {
+				JOptionPane.showMessageDialog(null, "set unit to INCH using: G20");
+			}
 		} else if (unit != null && unit.equals(UNIT_INCH)) {
 			System.out.println("set unit to MILLIMETER using: G21");
+			if (graphical) {
+				JOptionPane.showMessageDialog(null, "set unit to MILLIMETER using: G21");
+			}
 		} else {
 			System.err.println("No unit found (G20 or G21) in g-code");
 			unit = "";
@@ -89,10 +96,16 @@ public class Main {
 			for (int xi = 0; xi < xsteps; xi++) {
 				for (int yi = 0; yi < ysteps; yi++) {
 					Double zValue = null;
+
 					while (zValue == null) {
-						System.out.print("Z probe result at:  G1 Z10 G1 X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " G31 Z-10F100  ");	
+						String message = "Z probe result at:  G1 Z10 G1 X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " G31 Z-10F100  ";
+						System.out.print(message);	
 						try {
-							zValue = Double.parseDouble(inputReader.readLine());
+							if (graphical) {
+								zValue = Double.parseDouble(JOptionPane.showInputDialog(message));
+							} else {
+								zValue = Double.parseDouble(inputReader.readLine());
+							}
 						} catch (NumberFormatException e) {
 							System.err.println("Not a number in g-code format. Please use '.' as decimal point.");
 						}
@@ -118,17 +131,20 @@ public class Main {
 			System.out.println("Modifying g-code. Output to " + outfile.getName() + "...");
 			ModifyGCode(infile, outfile, z, max, xsteps, ysteps, maxdist);
 		} catch (IOException e) {
-			System.err.println("cannot modify g-code");
+			System.err.println("ccannot modif g-code");
 			PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
 			e.printStackTrace(out);
 			out.flush();
 			out.close();
+			if (graphical) {
+				JOptionPane.showMessageDialog(null, "cannot modify g-code");
+			}
 			return;
 		}
 		
 		System.out.println("done!");
 		if (graphical) {
-			JOptionPane.showConfirmDialog(null, "done!");
+			JOptionPane.showMessageDialog(null, "done!");
 		}
 	}
 	private static void assertEquals(double expected, double value) {

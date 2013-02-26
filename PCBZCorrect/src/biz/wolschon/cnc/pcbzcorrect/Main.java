@@ -36,7 +36,7 @@ public class Main {
 			System.out.println("input: g-code for milling a PCB");
 			System.out.println("program asks for Z-height of PCB at different points");
 			System.out.println("output: g-code for milling a PCB with z=0 being the surface of the uneven/warped PCB");
-			System.out.println("usage: <in.gcode>");
+			System.out.println("usage: java -jar pcbzcorrect <in.gcode>");
 		}
 		selftest();
 

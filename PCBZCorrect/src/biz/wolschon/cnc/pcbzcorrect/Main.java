@@ -4,6 +4,11 @@
 package biz.wolschon.cnc.pcbzcorrect;
 
 import java.awt.HeadlessException;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.ClipboardOwner;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.awt.geom.Rectangle2D;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -34,6 +39,13 @@ public class Main {
 	private static final String UNIT_MM = "mm";
 	private static String unit = null;
 	private static final NumberFormat format = new DecimalFormat("###.#####",  new DecimalFormatSymbols(Locale.US));  
+	private static final ClipboardOwner clipboardOwner = new ClipboardOwner() {
+		
+		@Override
+		public void lostOwnership(Clipboard arg0, Transferable arg1) {
+			// ignored
+		}
+	};
 	public static void main(String[] args) {
 		boolean graphical = false;
 		// parse arguments
@@ -89,7 +101,9 @@ public class Main {
 			if (unit != null && unit.equals(UNIT_INCH)) {
 				System.out.println("set unit to INCH using: G20");
 				if (graphical) {
-					JOptionPane.showMessageDialog(null, "set unit to INCH using: G20");
+					Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+				    clipboard.setContents(new StringSelection("G20"), clipboardOwner);
+					JOptionPane.showMessageDialog(null, "set unit to INCH using: G20 (in clipboard)");
 				}
 			} else if (unit != null && unit.equals(UNIT_INCH)) {
 				System.out.println("set unit to MILLIMETER using: G21");
@@ -108,7 +122,10 @@ public class Main {
 						Double zValue = null;
 
 						while (zValue == null) {
-							String message = "Z probe result at:  G1 Z10 G1 X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " G31 Z-10F100  ";
+							Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+							String command = "G1 Z10 F300 G1 X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " F100 G31 Z-10F100";
+						    clipboard.setContents(new StringSelection(command), clipboardOwner);
+							String message = "Z probe result at: X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " (in clipboard)";
 							System.out.print(message);	
 							try {
 								if (graphical) {

@@ -20,6 +20,9 @@ import java.text.NumberFormat;
 import java.util.Locale;
 import java.util.StringTokenizer;
 
+import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
+
 /**
  * @author marcuswolschon
  *
@@ -30,13 +33,20 @@ public class Main {
 	private static final String UNIT_MM = "mm";
 	private static String unit = null;
 	private static final NumberFormat format = new DecimalFormat("###.#####",  new DecimalFormatSymbols(Locale.US));  
-	public static void main(final String[] args) {
+	public static void main(String[] args) {
+		boolean graphical = false;
 		// parse arguments
 		if (args.length == 0) {
 			System.out.println("input: g-code for milling a PCB");
 			System.out.println("program asks for Z-height of PCB at different points");
 			System.out.println("output: g-code for milling a PCB with z=0 being the surface of the uneven/warped PCB");
 			System.out.println("usage: java -jar pcbzcorrect <in.gcode>");
+			JFileChooser chooser = new JFileChooser();
+			if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
+				return;
+			} else {
+				args = new String[] {chooser.getSelectedFile().getAbsolutePath()};
+			}
 		}
 		selftest();
 
@@ -117,6 +127,9 @@ public class Main {
 		}
 		
 		System.out.println("done!");
+		if (graphical) {
+			JOptionPane.showConfirmDialog(null, "done!");
+		}
 	}
 	private static void assertEquals(double expected, double value) {
 		final double epsilon = 0.01d;

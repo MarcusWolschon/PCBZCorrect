@@ -176,7 +176,7 @@ public class Main {
 
 						}
 					}
-			out.write("( PROBING DONE, remove probe now)");out.write(newline);//#2=travel high
+			out.write("( PROBING DONE, remove probe now, then press CYCLE START)");out.write(newline);//#2=travel high
 			out.write("M0");out.write(newline);//#2=travel high
 			
 

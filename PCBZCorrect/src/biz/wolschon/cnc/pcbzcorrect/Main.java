@@ -4,11 +4,6 @@
 package biz.wolschon.cnc.pcbzcorrect;
 
 import java.awt.HeadlessException;
-import java.awt.Toolkit;
-import java.awt.datatransfer.Clipboard;
-import java.awt.datatransfer.ClipboardOwner;
-import java.awt.datatransfer.StringSelection;
-import java.awt.datatransfer.Transferable;
 import java.awt.geom.Rectangle2D;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -16,9 +11,9 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.MessageFormat;
@@ -26,8 +21,11 @@ import java.text.NumberFormat;
 import java.util.Locale;
 import java.util.StringTokenizer;
 
+import javax.swing.JDialog;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 
 /**
  * @author marcuswolschon
@@ -38,14 +36,18 @@ public class Main {
 	private static final String UNIT_INCH = "Inch";
 	private static final String UNIT_MM = "mm";
 	private static String unit = null;
+	/**
+	 * how to format numbers in g-code
+	 */
 	private static final NumberFormat format = new DecimalFormat("###.#####",  new DecimalFormatSymbols(Locale.US));  
-	private static final ClipboardOwner clipboardOwner = new ClipboardOwner() {
-		
-		@Override
-		public void lostOwnership(Clipboard arg0, Transferable arg1) {
-			// ignored
-		}
-	};
+	/**
+	 * for graphical logging
+	 */
+	private static JTextArea textarea;
+	/**
+	 * create code for MACH3 or EMC2
+	 */
+	private static boolean mach3 = true;
 	public static void main(String[] args) {
 		boolean graphical = false;
 		// parse arguments
@@ -62,18 +64,22 @@ public class Main {
 				} else {
 					args = new String[] {chooser.getSelectedFile().getAbsolutePath()};
 					graphical = true;
+					JDialog dlg = new JDialog();
+					textarea = new JTextArea();
+					JScrollPane scroller = new JScrollPane(textarea);
+					dlg.setContentPane(scroller);
+					dlg.setVisible(true);
 				}
 			}
-			selftest();
-
+			
 			// read dimensions and unit
 			File infile = new File(args[0]);
-			System.out.println("determining dimensions of " + infile.getName() + "...");
+			log("determining dimensions of " + infile.getName() + "...");
 			Rectangle2D max  = null;
 			try {
 			    max = getMaxDimensions(infile);
 			} catch (Exception e) {
-				System.err.println("cannot determine maximum dimensions");
+				logError("cannot determine maximum dimensions");
 				PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
 				e.printStackTrace(out);
 				out.flush();
@@ -87,89 +93,106 @@ public class Main {
 			+ "(" + max.getMinX() + "," + max.getMinY() + unit + ") - "
 			+ "(" + max.getMaxX() + "," + max.getMaxY() + unit + ")"
 			+ "(width=" + max.getWidth() + ", height=" + max.getHeight() + unit + ")";
-			System.out.println(msg);
-			if (graphical) {
-				JOptionPane.showMessageDialog(null, msg);
+			log(msg);
+			
+			File outfile = new File(infile.getAbsolutePath() + "_zprobed.ngc");
+			if (outfile.exists()) {
+				log("overwriting output file!");
+				outfile.delete();
 			}
-
-			double maxdist = distance(max.getMinX(), max.getMinY(), max.getMaxX(), max.getMaxY()) / 6;
-
-			// ask for Z-probe at different points
-			final int xsteps = 3;
-			final int ysteps = 3;
-			System.out.println("Using " + xsteps + " x " +ysteps + " z probe values");
-			if (unit != null && unit.equals(UNIT_INCH)) {
-				System.out.println("set unit to INCH using: G20");
-				if (graphical) {
-					Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-				    clipboard.setContents(new StringSelection("G20"), clipboardOwner);
-					JOptionPane.showMessageDialog(null, "set unit to INCH using: G20 (in clipboard)");
-				}
-			} else if (unit != null && unit.equals(UNIT_INCH)) {
-				System.out.println("set unit to MILLIMETER using: G21");
-				if (graphical) {
-					JOptionPane.showMessageDialog(null, "set unit to MILLIMETER using: G21");
-				}
-			} else {
-				System.err.println("No unit found (G20 or G21) in g-code");
-				unit = "";
-			}
-			final double[] z = new double[xsteps * ysteps];
+			log("Modifying g-code. Output to " + outfile.getName() + "...");
+			BufferedWriter out;
 			try {
-				BufferedReader inputReader = new BufferedReader(new InputStreamReader(System.in));
-				for (int xi = 0; xi < xsteps; xi++) {
-					for (int yi = 0; yi < ysteps; yi++) {
-						Double zValue = null;
-
-						while (zValue == null) {
-							Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-							String command = "G1 Z10 F300 G1 X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " F100 G31 Z-10F100";
-						    clipboard.setContents(new StringSelection(command), clipboardOwner);
-							String message = "Z probe result at: X" + getXLocation(xi, xsteps, max) + " Y" + getYLocation(yi, ysteps, max) + " (in clipboard)";
-							System.out.print(message);	
-							try {
-								if (graphical) {
-									zValue = Double.parseDouble(JOptionPane.showInputDialog(message));
-								} else {
-									zValue = Double.parseDouble(inputReader.readLine());
-								}
-							} catch (NumberFormatException e) {
-								System.err.println("Not a number in g-code format. Please use '.' as decimal point.");
-							}
-						}
-						z[xi + xsteps*yi] = zValue;
-					}
-				}
-			} catch (IOException e) {
-				System.err.println("cannot read z probes from user");
-				PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
-				e.printStackTrace(out);
-				out.flush();
-				out.close();
-
-				if (graphical) {
-					JOptionPane.showMessageDialog(null, "cannot read z probes from user [" + e.getClass().getName() + "] " + e.getMessage());
-				}
+				out = new BufferedWriter(new FileWriter(outfile));
+			} catch (IOException e1) {
+				logError("cannot open output file " + outfile.getAbsolutePath());
+				StringWriter sw = new StringWriter();
+				PrintWriter exout = new PrintWriter(sw);
+				e1.printStackTrace(exout);
+				exout.flush();
+				exout.close();
+				logError(sw.toString());
 				return;
 			}
+			String newline = System.getProperty("line.separator");
+			
+			double maxdist = distance(max.getMinX(), max.getMinY(), max.getMaxX(), max.getMaxY()) / 6;
+
+			// write subprogram
+
+			// ask for Z-probe at different points
+			int xsteps;
+			int ysteps;
+			try {
+				out.write("(Things you can change:)");out.write(newline);
+				if (unit != null && unit.equals(UNIT_MM)) {
+					out.write("#1=50		(Safe height)");out.write(newline);
+					out.write("#2=10		(Travel height)");out.write(newline);
+					out.write("#3=-.004		(Route depth)");out.write(newline);
+				    out.write("#4=-10		(Probe depth)");out.write(newline);
+				    out.write("");out.write(newline);
+					out.write("(Things you should not change:)");out.write(newline);
+					out.write("G21		(mm)");out.write(newline);
+				} else {
+					// sadly for PCBs we have to default to imperial **** inches
+					out.write("#1=12		(Safe height)");out.write(newline);
+					out.write("#2=1		    (Travel height)");out.write(newline);
+					out.write("#3=-.1		(Route depth)");out.write(newline);
+				    out.write("#4=-1		(Probe depth)");out.write(newline);
+				    out.write("");out.write(newline);
+					out.write("(Things you should not change:)");out.write(newline);
+					out.write("G20		(inch)");out.write(newline);
+				}
+				out.write("G90		(Abs coords)");out.write(newline);
+				out.write("");out.write(newline);
+				out.write("M05		(Stop Motor)");out.write(newline);
+				out.write("G00 Z[#1]       (Safe height)");out.write(newline);
+				out.write("G00 X0 Y0       (.. on the ranch)");out.write(newline);
+				out.write("");out.write(newline);
+				
+				xsteps = 3;
+				ysteps = 3;
+					for (int xi = 0; xi < xsteps; xi++) {
+						for (int yi = 0; yi < ysteps; yi++) {
+							int arrayIndex = 2000 + xi + xsteps*yi;
+
+							double xLocation = getXLocation(xi, xsteps, max);
+							double yLocation = getYLocation(yi, ysteps, max);
+							out.write("(PROBE[" + xi + "," + yi + "] " + format.format(xLocation) + " " + format.format(yLocation) + " -> " + arrayIndex + ")");out.write(newline);
+							out.write("G00 X" + format.format(xLocation) + " Y" + format.format(yLocation) + " Z[#2]");out.write(newline); //#2=travel high
+							if (mach3 ) { //MACH3
+								out.write("G31 Z[#4] F25");out.write(newline); // #4 = probe depth
+								out.write("#" + arrayIndex + "=#2002");out.write(newline); //#2000=X, #2001=Y, #2002=Z
+							} else { // EMC2
+								out.write("G38.2 Z[#4] F25");out.write(newline); // #4 = probe depth
+								out.write("#" + arrayIndex + "=#5063");out.write(newline);
+							}
+							out.write("G00 Z[#3]");out.write(newline);
+
+						}
+					}
+			} catch (IOException e1) {
+				logError("cannot write header for g-code");
+				StringWriter sw = new StringWriter();
+				PrintWriter exout = new PrintWriter(sw);
+				e1.printStackTrace(exout);
+				exout.flush();
+				exout.close();
+				logError(sw.toString());
+				return;
+			}
+			
 
 			try {
-				File outfile = new File(infile.getAbsolutePath() + "_zproved.ngc");
-				if (outfile.exists()) {
-					System.err.println("overwriting output file!");
-					outfile.delete();
-				}
-				System.out.println("Modifying g-code. Output to " + outfile.getName() + "...");
-				ModifyGCode(infile, outfile, z, max, xsteps, ysteps, maxdist);
+				ModifyGCode(infile, out, max, xsteps, ysteps, maxdist);
 			} catch (IOException e) {
-				System.err.println("ccannot modif g-code");
-				PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
-				e.printStackTrace(out);
-				out.flush();
-				out.close();
-				if (graphical) {
-					JOptionPane.showMessageDialog(null, "cannot modify g-code [" + e.getClass().getName() + "] " + e.getMessage());
-				}
+				logError("cannot modify g-code");
+				StringWriter sw = new StringWriter();
+				PrintWriter exout = new PrintWriter(sw);
+				e.printStackTrace(exout);
+				exout.flush();
+				exout.close();
+				logError(sw.toString());
 				return;
 			}
 			
@@ -184,48 +207,17 @@ public class Main {
 			}
 		}
 	}
-	private static void assertEquals(double expected, double value) {
-		final double epsilon = 0.01d;
-		if (Math.abs(value - expected) > epsilon) {
-			throw new IllegalStateException("self test failed! expected=" + expected + " value=" + value);
+	private static void logError(final String message) {
+		System.err.println(message);
+		if (textarea != null) {
+			textarea.setText("ERROR: " + textarea.getText() + "\n" + message);
 		}
 	}
-	private static void selftest() {
-		Rectangle2D dimensions=  new Rectangle2D.Double(-1.0d, 2.0d, 2.0d, 4.0d);
-		assertEquals(0.0d, getXLocation(1, 3, dimensions));
-		assertEquals(4.0d, getYLocation(1, 3, dimensions));
-		assertEquals(2.0d, getYLocation(0, 10, dimensions));
-		assertEquals(6.0d, getYLocation(7, 8, dimensions));
-		
-		assertEquals(0.5d, linearInterpolateX(1, 1, 0.5d,
-				new double[] {9.0, 9.0,9.0,
-				              9.0, 0.0, 1.0,
-				              9.0, 9.0, 9.0},
-			    3, 3));
-		assertEquals(1.0d, linearInterpolateX(2, 1, 0.0d,
-				new double[] {9.0, 9.0,9.0,
-				              9.0, 9.0, 1.0,
-				              9.0, 9.0, 9.0},
-			    3, 3));
-
-		assertEquals(1.0d, linearInterpolateX(0, 0, 0.0d,
-				new double[] {1.0, 9.0,9.0,
-				              9.0, 9.0, 9.0,
-				              9.0, 9.0, 9.0},
-			    3, 3));
-		
-
-		assertEquals(1.0d, getInterpolatedZ(-1.0d, 2.0d, 
-				new double[] {1.0, 9.0,9.0,
-				              9.0, 9.0, 9.0,
-				              9.0, 9.0, 9.0},
-				              dimensions, 3, 3));
-		assertEquals(1.5d, getInterpolatedZ(-1.0d, 3.0d, 
-				new double[] {1.0, 9.0,9.0,
-				              2.0, 9.0, 9.0,
-				              9.0, 9.0, 9.0},
-				              dimensions, 3, 3));
-		System.out.println("self test passed");
+	private static void log(final String message) {
+		System.out.println(message);
+		if (textarea != null) {
+			textarea.setText(textarea.getText() + "\n" + message);
+		}
 	}
 
 	private static double distance(final double x1, final double y1, final double x2, final double y2) {
@@ -237,20 +229,17 @@ public class Main {
 	 * Read the g-code from infile.
 	 * Modify all Z values by adding the linear interpolation from the matrix z.
 	 * Add a modified Z value to any line with X or Y but no Z coordinate.
-	 * TODO: Does NOT break up long movements into smaller segments to follow a Z curve
 	 * @param infile file to red
 	 * @param outfile file to write (will be overwritten)
-	 * @param z xsteps * ysteps meassurements of z height
 	 * @param max the physical dimensions
 	 * @param xsteps number of meassurements taken along the X axis and stored in z
 	 * @param ysteps number of meassurements taken along the Y axis and stored in z
 	 * @param maxdistance break up movements of more then this distance
 	 * @throws IOException
 	 */
-	private static void ModifyGCode(final File infile, final File outfile, double[] z,
+	private static void ModifyGCode(final File infile, final BufferedWriter out,
 			Rectangle2D max, final int xsteps, final int ysteps, final double maxdistance) throws IOException {
 		BufferedReader in = new BufferedReader(new FileReader(infile));
-		BufferedWriter out = new BufferedWriter(new FileWriter(outfile));
 		String line = null;
 		String newline = System.getProperty("line.separator");
 		Double currentX = null; // we don't care about instanciating lots of Double classes
@@ -282,8 +271,8 @@ public class Main {
 						lastZ = Double.parseDouble(token.substring(1));
 						if (currentX == null || currentY == null) {
 							if (lastZ < 0) {
-								System.err.println("Code contains a Z value < 0 before the first X or Y value.");
-								System.err.println("Writing unchanged Z value for this location");
+								logError("Code contains a Z value < 0 before the first X or Y value.");
+								logError("Writing unchanged Z value for this location");
 							}
 						} else {
 							token = "Z{2}";
@@ -293,14 +282,14 @@ public class Main {
 					outline.append(token).append(' ');
 
 					if (outline.length() > 100) {
-						System.err.println("line too long: '" + outline.toString() + "'");
+						logError("line too long: '" + outline.toString() + "'");
 						System.exit(-2);
 					}
 				}
 
 				if (oldX == null || oldY == null || !found || distance(currentX, currentY, oldX, oldY) < maxdistance) {
 					// output without breaking this up
-					writeGCodeLine(z, max, xsteps, ysteps, out, newline, currentX,
+					writeGCodeLine(max, xsteps, ysteps, out, newline, currentX,
 							currentY, lastZ, outline, found, foundZ);
 				} else {
 					// break up this line to stay below maxdistance
@@ -312,7 +301,7 @@ public class Main {
 					for (int i = 1; i < count + 1; i++) {
 						double xinterpolated = oldX + i * xdist/count;
 						double yinterpolated = oldY + i * ydist/count;
-						writeGCodeLine(z, max, xsteps, ysteps, out, newline, xinterpolated,
+						writeGCodeLine(max, xsteps, ysteps, out, newline, xinterpolated,
 								yinterpolated, lastZ, outline, found, foundZ);
 					}
 				}
@@ -326,32 +315,31 @@ public class Main {
 		in.close();
 		
 	}
-	private static void writeGCodeLine(double[] z, Rectangle2D max,
+	private static void writeGCodeLine(Rectangle2D max,
 			final int xsteps, final int ysteps, BufferedWriter out,
 			String newline, Double currentX, Double currentY, double lastZ,
 			StringBuilder outline, boolean found, boolean foundZ)
 			throws IOException {
 		if (found || foundZ) {
-			double changedZ = lastZ;
+			String changedZ = format.format(lastZ);
 			String xstr = "";
 			String ystr = "";
 			if (currentX != null && currentY != null) {
-				changedZ = lastZ + getInterpolatedZ(currentX, currentY, z, max, xsteps, ysteps);
+				changedZ = "[" + changedZ + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps) + "]";
 				xstr = format.format(currentX);
 				ystr = format.format(currentY);
 			}
-			String formated = MessageFormat.format(outline.toString(), xstr, ystr, format.format(changedZ));
-System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + ystr + "'/'" + format.format(changedZ) + "' = '" + formated + "'");
+			String formated = MessageFormat.format(outline.toString(), xstr, ystr, changedZ);
+System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + ystr + "'/'" + changedZ + "' = '" + formated + "'");
 			out.write(formated);
 		} else {
 			out.write(outline.toString());
 		}
 
 		// write line
-		//TODO if (found && distance(currentX, currentY, oldX, oldY) > maxDistance) {breakUpLine(line)} else {
 		if (found && !foundZ) {
-			double changedZ = lastZ + getInterpolatedZ(currentX, currentY, z, max, xsteps, ysteps);
-			out.write("Z" + format.format(changedZ));
+			String changedZ = "[" + format.format(lastZ) + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps)+ "]";
+			out.write("Z" + changedZ);
 		}
 		out.write(newline);
 	}
@@ -359,14 +347,13 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 	 * Get the bilinear interpolation of the z values.
 	 * @param lastX physical location in x
 	 * @param lastY physical location in y
-	 * @param z the z meassurements
 	 * @param max max+min physical dimensions
 	 * @param xsteps number of meassurements taken along the X axis and stored in z
 	 * @param ysteps number of meassurements taken along the Y axis and stored in z
 	 * @return the height Z=0 should be at
 	 */
-	private static double getInterpolatedZ(double lastX, double lastY,
-			double[] z, Rectangle2D max, final int xsteps, final int ysteps) {
+	private static String getInterpolatedZ(double lastX, double lastY,
+			Rectangle2D max, final int xsteps, final int ysteps) {
 		// bilinear interpolation
 		double xlength = lastX - max.getMinX();
 		double ylength = lastY - max.getMinY();
@@ -398,11 +385,10 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 //System.out.println("DEBUG: yindex=" + yindex);
 //System.out.println("DEBUG: xfactor=" + xfactor);
 //System.out.println("DEBUG: yfactor=" + yfactor);
-		double x1 = linearInterpolateX(xindex, yindex, xfactor, z ,xsteps, ysteps);
 		if (yindex == ysteps - 1) {
-			return x1;
+			String x1 = linearInterpolateX(xindex, yindex, xfactor, 1.0d ,xsteps, ysteps);
+		   return x1;
 		}
-		double x2 = linearInterpolateX(xindex, yindex + 1, xfactor, z ,xsteps, ysteps);
 
 //System.out.println("DEBUG: x1=" + x1);
 //System.out.println("DEBUG: x2=" + x2);
@@ -412,8 +398,10 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 		if (yfactor > 1) {
 			throw new IllegalArgumentException("yfactor > 1");
 		}
+		String x1 = linearInterpolateX(xindex, yindex, xfactor, 1-yfactor ,xsteps, ysteps);
+		String x2 = linearInterpolateX(xindex, yindex + 1, xfactor, yfactor ,xsteps, ysteps);
 		
-		return (x2 * yfactor) + (x1 * (1 - yfactor));
+		return x1 + " + " + x2;
 	}
 
 	/**
@@ -421,12 +409,12 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 	 * @param xindex interpolatte between the values at xindex and xindex+1
 	 * @param yindex y index into z
 	 * @param xfactor 0.0=use value at xindex, 1.0=use value at xindex+1
-	 * @param z meassurements to interpolate
+	 * @param yFactor multiply this to our own internal factor for the register value
 	 * @param xsteps number of meassurements taken along the X axis and stored in z
 	 * @param ysteps number of meassurements taken along the Y axis and stored in z
 	 * @return
 	 */
-	private static double linearInterpolateX(int xindex, int yindex, double xfactor, double[] z,
+	private static String linearInterpolateX(int xindex, int yindex, double xfactor, double yFactor,
 			int xsteps, int ysteps) {
 		if (xfactor < 0) {
 			throw new IllegalArgumentException("xfactor < 0");
@@ -440,12 +428,15 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 		if (yindex >= ysteps) {
 			throw new IllegalArgumentException("yindex(=" + yindex + ") >= ysteps(=" + ysteps + ")");
 		}
-		double left = z[xindex + yindex * xsteps];
+		int leftIndex = 2000 + xindex + yindex * xsteps;
 		if (xindex == xsteps - 1) {
-			return left;
+			return format.format(yFactor) + "*" + "#" + leftIndex;
 		}
-		double right = z[xindex + 1 + yindex * xsteps];
-		return (right * xfactor) + (left * (1 - xfactor));
+		int rightIndex = 2000 + xindex + 1 + yindex * xsteps;
+		
+		return format.format(xfactor * yFactor) + " * " + "#" + rightIndex
+			+ " "
+			+ format.format((1 - xfactor) * yFactor) + " * " + "#" + leftIndex;
 	}
 	/**
 	 * @param xindex

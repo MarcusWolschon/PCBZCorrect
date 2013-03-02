@@ -437,7 +437,7 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 		int rightIndex = STARTVARRANGE + xindex + 1 + yindex * xsteps;
 		
 		return format.format(xfactor * yFactor) + " * " + "#" + rightIndex
-			+ " "
+			+ " + "
 			+ format.format((1 - xfactor) * yFactor) + " * " + "#" + leftIndex;
 	}
 	/**

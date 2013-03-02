@@ -157,8 +157,8 @@ public class Main {
 				out.write("G00 X0 Y0       (.. on the ranch)");out.write(newline);
 				out.write("");out.write(newline);
 				
-				xsteps = 3;
-				ysteps = 3;
+				xsteps = 5;
+				ysteps = 5;
 					for (int xi = 0; xi < xsteps; xi++) {
 						for (int yi = 0; yi < ysteps; yi++) {
 							int arrayIndex = STARTVARRANGE + xi + xsteps*yi;

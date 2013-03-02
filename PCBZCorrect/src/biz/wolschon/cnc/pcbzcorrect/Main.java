@@ -200,15 +200,12 @@ public class Main {
 				return;
 			}
 			
-			System.out.println("done!");
+			log("done!");
 			if (graphical) {
 				JOptionPane.showMessageDialog(null, "done!");
 			}
 		} catch (HeadlessException e) {
 			e.printStackTrace();
-			if (graphical) {
-				JOptionPane.showMessageDialog(null, "Error! [" + e.getClass().getName() + "] " + e.getMessage());
-			}
 		}
 	}
 	private static void logError(final String message) {

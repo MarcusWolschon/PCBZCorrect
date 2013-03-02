@@ -176,6 +176,10 @@ public class Main {
 
 						}
 					}
+			out.write("( PROBING DONE, remove probe now)");out.write(newline);//#2=travel high
+			out.write("M0");out.write(newline);//#2=travel high
+			
+
 			} catch (IOException e1) {
 				logError("cannot write header for g-code");
 				StringWriter sw = new StringWriter();

@@ -171,7 +171,7 @@ public class Main {
 								out.write("G38.2 Z[#4] F25");out.write(newline); // #4 = probe depth
 								out.write("#" + arrayIndex + "=#5063");out.write(newline);
 							}
-							out.write("G00 Z[#3]");out.write(newline);
+							out.write("G00 Z[#2]");out.write(newline);//#2=travel high
 
 						}
 					}
@@ -326,7 +326,7 @@ public class Main {
 			String xstr = "";
 			String ystr = "";
 			if (currentX != null && currentY != null) {
-				changedZ = "[" + changedZ + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps) + "]";
+				changedZ = "[" + changedZ + " + " + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps) + "]";
 				xstr = format.format(currentX);
 				ystr = format.format(currentY);
 			}
@@ -339,7 +339,7 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 
 		// write line
 		if (found && !foundZ) {
-			String changedZ = "[" + format.format(lastZ) + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps)+ "]";
+			String changedZ = "[" + format.format(lastZ) + " + " + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps)+ "]";
 			out.write("Z" + changedZ);
 		}
 		out.write(newline);

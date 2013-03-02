@@ -295,7 +295,7 @@ public class Main {
 					}
 				}
 
-				if (oldX == null || oldY == null || !found || distance(currentX, currentY, oldX, oldY) < maxdistance) {
+				if (lastZ > 0 || oldX == null || oldY == null || !found || distance(currentX, currentY, oldX, oldY) < maxdistance) {
 					// output without breaking this up
 					writeGCodeLine(max, xsteps, ysteps, out, newline, currentX,
 							currentY, lastZ, outline, found, foundZ);

@@ -33,6 +33,10 @@ import javax.swing.JTextArea;
  */
 public class Main {
 
+	/**
+	 * Index of the first g-code variable we're using to store our Z-meassurements.
+	 */
+	private static final int STARTVARRANGE = 100;
 	private static final String UNIT_INCH = "Inch";
 	private static final String UNIT_MM = "mm";
 	private static String unit = null;
@@ -154,7 +158,7 @@ public class Main {
 				ysteps = 3;
 					for (int xi = 0; xi < xsteps; xi++) {
 						for (int yi = 0; yi < ysteps; yi++) {
-							int arrayIndex = 2000 + xi + xsteps*yi;
+							int arrayIndex = STARTVARRANGE + xi + xsteps*yi;
 
 							double xLocation = getXLocation(xi, xsteps, max);
 							double yLocation = getYLocation(yi, ysteps, max);
@@ -428,11 +432,11 @@ System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + 
 		if (yindex >= ysteps) {
 			throw new IllegalArgumentException("yindex(=" + yindex + ") >= ysteps(=" + ysteps + ")");
 		}
-		int leftIndex = 2000 + xindex + yindex * xsteps;
+		int leftIndex = STARTVARRANGE + xindex + yindex * xsteps;
 		if (xindex == xsteps - 1) {
 			return format.format(yFactor) + "*" + "#" + leftIndex;
 		}
-		int rightIndex = 2000 + xindex + 1 + yindex * xsteps;
+		int rightIndex = STARTVARRANGE + xindex + 1 + yindex * xsteps;
 		
 		return format.format(xfactor * yFactor) + " * " + "#" + rightIndex
 			+ " "

@@ -72,6 +72,7 @@ public class Main {
 					textarea = new JTextArea();
 					JScrollPane scroller = new JScrollPane(textarea);
 					dlg.setContentPane(scroller);
+					dlg.pack();
 					dlg.setVisible(true);
 				}
 			}

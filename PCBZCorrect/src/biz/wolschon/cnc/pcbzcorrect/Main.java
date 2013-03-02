@@ -3,6 +3,7 @@
  */
 package biz.wolschon.cnc.pcbzcorrect;
 
+import java.awt.Dimension;
 import java.awt.HeadlessException;
 import java.awt.geom.Rectangle2D;
 import java.io.BufferedReader;
@@ -71,6 +72,7 @@ public class Main {
 					JDialog dlg = new JDialog();
 					textarea = new JTextArea();
 					JScrollPane scroller = new JScrollPane(textarea);
+					scroller.setMinimumSize(new Dimension(400, 800));
 					dlg.setContentPane(scroller);
 					dlg.pack();
 					dlg.setVisible(true);
@@ -140,7 +142,7 @@ public class Main {
 					out.write("G21		(mm)");out.write(newline);
 				} else {
 					// sadly for PCBs we have to default to imperial **** inches
-					out.write("#1=12		(Safe height)");out.write(newline);
+					out.write("#1=1 		(Safe height)");out.write(newline);
 					out.write("#2=1		    (Travel height)");out.write(newline);
 					out.write("#3=-.1		(Route depth)");out.write(newline);
 				    out.write("#4=-1		(Probe depth)");out.write(newline);

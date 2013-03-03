@@ -3,8 +3,14 @@
  */
 package biz.wolschon.cnc.pcbzcorrect;
 
+import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.GridLayout;
 import java.awt.HeadlessException;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.awt.geom.Rectangle2D;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -22,11 +28,17 @@ import java.text.NumberFormat;
 import java.util.Locale;
 import java.util.StringTokenizer;
 
-import javax.swing.JDialog;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.filechooser.FileFilter;
 
 /**
  * @author marcuswolschon
@@ -49,10 +61,64 @@ public class Main {
 	 * for graphical logging
 	 */
 	private static JTextArea textarea;
+	private static JCheckBox checkboxMach3;
+	private static JTextField inputGridX;
+	private static JTextField inputGridY;
+	private static JFrame gui;
 	/**
 	 * create code for MACH3 or EMC2
 	 */
 	private static boolean mach3 = true;
+	private static int xsteps = 5;
+	private static int ysteps = 5;
+	
+	private static void initGUI(final String[] args) {
+		gui = new JFrame();
+		gui.setTitle("PCBZCorrect");
+		BorderLayout mainLayout = new BorderLayout();
+		gui.setLayout(mainLayout);
+		
+		textarea = new JTextArea();
+		JScrollPane scroller = new JScrollPane(textarea);
+		scroller.setMinimumSize(new Dimension(400, 800));
+		scroller.setPreferredSize(new Dimension(400, 800));
+		gui.getContentPane().add(scroller, BorderLayout.CENTER);
+
+		JButton start = new JButton("start");
+		start.addActionListener(new ActionListener() {
+			
+			@Override
+			public void actionPerformed(ActionEvent arg0) {
+				mach3 = !checkboxMach3.isSelected();
+				xsteps = Integer.parseInt(inputGridX.getText());
+				ysteps = Integer.parseInt(inputGridY.getText());
+				doWork(args, true);
+			}
+		});
+		gui.getContentPane().add(start, BorderLayout.SOUTH);
+
+		JPanel north = new JPanel();
+		north.setLayout(new GridLayout(3, 2));
+		inputGridX = new JTextField("5");
+		inputGridY = new JTextField("5");
+		north.add(inputGridX); north.add(new JLabel("Probe grid X"));
+		north.add(inputGridY); north.add(new JLabel("Probe grid Y"));
+		checkboxMach3 = new JCheckBox();
+		north.add(checkboxMach3); north.add(new JLabel("EMC2 instead of MACH3"));
+		gui.getContentPane().add(north, BorderLayout.NORTH);
+
+		gui.addWindowListener(new WindowAdapter() {
+			@Override
+			public void windowClosing(WindowEvent e) {
+				System.exit(0);
+			}
+				
+		});
+		gui.pack();
+		gui.setVisible(true);
+		
+		
+	}
 	public static void main(String[] args) {
 		boolean graphical = false;
 		// parse arguments
@@ -63,156 +129,169 @@ public class Main {
 				System.out.println("output: g-code for milling a PCB with z=0 being the surface of the uneven/warped PCB");
 				System.out.println("usage: java -jar pcbzcorrect <in.gcode>");
 				JFileChooser chooser = new JFileChooser();
+				chooser.setFileFilter(new FileFilter() {
+					
+					@Override
+					public String getDescription() {
+						return "g-code";
+					}
+					
+					@Override
+					public boolean accept(File file) {
+						String name = file.getName().toLowerCase();
+						return name.endsWith(".gcode") || name.endsWith(".ngc") || name.endsWith(".tap") || name.endsWith(".txt");
+					}
+				});
 				if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
 					JOptionPane.showMessageDialog(null, "aborted!");
 					return;
 				} else {
 					args = new String[] {chooser.getSelectedFile().getAbsolutePath()};
 					graphical = true;
-					JDialog dlg = new JDialog();
-					textarea = new JTextArea();
-					JScrollPane scroller = new JScrollPane(textarea);
-					scroller.setMinimumSize(new Dimension(400, 800));
-					dlg.setContentPane(scroller);
-					dlg.pack();
-					dlg.setVisible(true);
+					initGUI(args);
+//					JDialog dlg = new JDialog();
+//					textarea = new JTextArea();
+//					JScrollPane scroller = new JScrollPane(textarea);
+//					scroller.setMinimumSize(new Dimension(400, 800));
+//					scroller.setPreferredSize(new Dimension(400, 800));
+//					dlg.setContentPane(scroller);
+//					dlg.pack();
+//					dlg.setVisible(true);
 				}
-			}
-			
-			// read dimensions and unit
-			File infile = new File(args[0]);
-			log("determining dimensions of " + infile.getName() + "...");
-			Rectangle2D max  = null;
-			try {
-			    max = getMaxDimensions(infile);
-			} catch (Exception e) {
-				logError("cannot determine maximum dimensions");
-				PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
-				e.printStackTrace(out);
-				out.flush();
-				out.close();
-				if (graphical) {
-					JOptionPane.showMessageDialog(null, "cannot determine maximum dimensions [" + e.getClass().getName() + "] " + e.getMessage());
-				}
-				return;
-			}
-			String msg = "dimensions: "
-			+ "(" + max.getMinX() + "," + max.getMinY() + unit + ") - "
-			+ "(" + max.getMaxX() + "," + max.getMaxY() + unit + ")"
-			+ "(width=" + max.getWidth() + ", height=" + max.getHeight() + unit + ")";
-			log(msg);
-			
-			File outfile = new File(infile.getAbsolutePath() + "_zprobed.ngc");
-			if (outfile.exists()) {
-				log("overwriting output file!");
-				outfile.delete();
-			}
-			log("Modifying g-code. Output to " + outfile.getName() + "...");
-			BufferedWriter out;
-			try {
-				out = new BufferedWriter(new FileWriter(outfile));
-			} catch (IOException e1) {
-				logError("cannot open output file " + outfile.getAbsolutePath());
-				StringWriter sw = new StringWriter();
-				PrintWriter exout = new PrintWriter(sw);
-				e1.printStackTrace(exout);
-				exout.flush();
-				exout.close();
-				logError(sw.toString());
-				return;
-			}
-			String newline = System.getProperty("line.separator");
-			
-			double maxdist = distance(max.getMinX(), max.getMinY(), max.getMaxX(), max.getMaxY()) / 6;
-
-			// write subprogram
-
-			// ask for Z-probe at different points
-			int xsteps;
-			int ysteps;
-			try {
-				out.write("(Things you can change:)");out.write(newline);
-				if (unit != null && unit.equals(UNIT_MM)) {
-					out.write("#1=50		(Safe height)");out.write(newline);
-					out.write("#2=10		(Travel height)");out.write(newline);
-					out.write("#3=-.004		(Route depth)");out.write(newline);
-				    out.write("#4=-10		(Probe depth)");out.write(newline);
-				    out.write("");out.write(newline);
-					out.write("(Things you should not change:)");out.write(newline);
-					out.write("G21		(mm)");out.write(newline);
-				} else {
-					// sadly for PCBs we have to default to imperial **** inches
-					out.write("#1=1 		(Safe height)");out.write(newline);
-					out.write("#2=1		    (Travel height)");out.write(newline);
-					out.write("#3=-.1		(Route depth)");out.write(newline);
-				    out.write("#4=-1		(Probe depth)");out.write(newline);
-				    out.write("");out.write(newline);
-					out.write("(Things you should not change:)");out.write(newline);
-					out.write("G20		(inch)");out.write(newline);
-				}
-				out.write("G90		(Abs coords)");out.write(newline);
-				out.write("");out.write(newline);
-				out.write("M05		(Stop Motor)");out.write(newline);
-				out.write("G00 Z[#1]       (Safe height)");out.write(newline);
-				out.write("G00 X0 Y0       (.. on the ranch)");out.write(newline);
-				out.write("");out.write(newline);
-				
-				xsteps = 5;
-				ysteps = 5;
-					for (int xi = 0; xi < xsteps; xi++) {
-						for (int yi = 0; yi < ysteps; yi++) {
-							int arrayIndex = STARTVARRANGE + xi + xsteps*yi;
-
-							double xLocation = getXLocation(xi, xsteps, max);
-							double yLocation = getYLocation(yi, ysteps, max);
-							out.write("(PROBE[" + xi + "," + yi + "] " + format.format(xLocation) + " " + format.format(yLocation) + " -> " + arrayIndex + ")");out.write(newline);
-							out.write("G00 X" + format.format(xLocation) + " Y" + format.format(yLocation) + " Z[#2]");out.write(newline); //#2=travel high
-							if (mach3 ) { //MACH3
-								out.write("G31 Z[#4] F25");out.write(newline); // #4 = probe depth
-								out.write("#" + arrayIndex + "=#2002");out.write(newline); //#2000=X, #2001=Y, #2002=Z
-							} else { // EMC2
-								out.write("G38.2 Z[#4] F25");out.write(newline); // #4 = probe depth
-								out.write("#" + arrayIndex + "=#5063");out.write(newline);
-							}
-							out.write("G00 Z[#2]");out.write(newline);//#2=travel high
-
-						}
-					}
-			out.write("( PROBING DONE, remove probe now, then press CYCLE START)");out.write(newline);//#2=travel high
-			out.write("M0");out.write(newline);//#2=travel high
-			
-
-			} catch (IOException e1) {
-				logError("cannot write header for g-code");
-				StringWriter sw = new StringWriter();
-				PrintWriter exout = new PrintWriter(sw);
-				e1.printStackTrace(exout);
-				exout.flush();
-				exout.close();
-				logError(sw.toString());
-				return;
-			}
-			
-
-			try {
-				ModifyGCode(infile, out, max, xsteps, ysteps, maxdist);
-			} catch (IOException e) {
-				logError("cannot modify g-code");
-				StringWriter sw = new StringWriter();
-				PrintWriter exout = new PrintWriter(sw);
-				e.printStackTrace(exout);
-				exout.flush();
-				exout.close();
-				logError(sw.toString());
-				return;
-			}
-			
-			log("done!");
-			if (graphical) {
-				JOptionPane.showMessageDialog(null, "done!");
+			} else {
+				doWork(args, graphical);
 			}
 		} catch (HeadlessException e) {
 			e.printStackTrace();
+		}
+	}
+	private static void doWork(String[] args, boolean graphical) {
+		// read dimensions and unit
+		File infile = new File(args[0]);
+		log("determining dimensions of " + infile.getName() + "...");
+		Rectangle2D max  = null;
+		try {
+		    max = getMaxDimensions(infile);
+		} catch (Exception e) {
+			logError("cannot determine maximum dimensions");
+			PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
+			e.printStackTrace(out);
+			out.flush();
+			out.close();
+			if (graphical) {
+				JOptionPane.showMessageDialog(null, "cannot determine maximum dimensions [" + e.getClass().getName() + "] " + e.getMessage());
+			}
+			return;
+		}
+		String msg = "dimensions: "
+		+ "(" + max.getMinX() + "," + max.getMinY() + unit + ") - "
+		+ "(" + max.getMaxX() + "," + max.getMaxY() + unit + ")"
+		+ "(width=" + max.getWidth() + ", height=" + max.getHeight() + unit + ")";
+		log(msg);
+		
+		File outfile = new File(infile.getAbsolutePath() + "_zprobed.ngc");
+		if (outfile.exists()) {
+			log("overwriting output file!");
+			outfile.delete();
+		}
+		log("Modifying g-code. Output to " + outfile.getName() + "...");
+		BufferedWriter out;
+		try {
+			out = new BufferedWriter(new FileWriter(outfile));
+		} catch (IOException e1) {
+			logError("cannot open output file " + outfile.getAbsolutePath());
+			StringWriter sw = new StringWriter();
+			PrintWriter exout = new PrintWriter(sw);
+			e1.printStackTrace(exout);
+			exout.flush();
+			exout.close();
+			logError(sw.toString());
+			return;
+		}
+		String newline = System.getProperty("line.separator");
+		
+		double maxdist = distance(max.getMinX(), max.getMinY(), max.getMaxX(), max.getMaxY()) / 6;
+
+		// write subprogram
+
+		// ask for Z-probe at different points
+		try {
+			out.write("(Things you can change:)");out.write(newline);
+			if (unit != null && unit.equals(UNIT_MM)) {
+				out.write("#1=50		(Safe height)");out.write(newline);
+				out.write("#2=10		(Travel height)");out.write(newline);
+				out.write("#4=-10		(Probe depth)");out.write(newline);
+			    out.write("");out.write(newline);
+				out.write("(Things you should not change:)");out.write(newline);
+				out.write("G21		(mm)");out.write(newline);
+			} else {
+				// sadly for PCBs we have to default to imperial **** inches
+				out.write("#1=1 		(Safe height)");out.write(newline);
+				out.write("#2=0.5		    (Travel height)");out.write(newline);
+				out.write("#4=-1		(Probe depth)");out.write(newline);
+			    out.write("");out.write(newline);
+				out.write("(Things you should not change:)");out.write(newline);
+				out.write("G20		(inch)");out.write(newline);
+			}
+			out.write("G90		(Abs coords)");out.write(newline);
+			out.write("");out.write(newline);
+			out.write("M05		(Stop Motor)");out.write(newline);
+			out.write("G00 Z[#1]       (Safe height)");out.write(newline);
+			out.write("G00 X0 Y0       (.. on the ranch)");out.write(newline);
+			out.write("");out.write(newline);
+			
+				for (int xi = 0; xi < xsteps; xi++) {
+					for (int yi = 0; yi < ysteps; yi++) {
+						int arrayIndex = STARTVARRANGE + xi + xsteps*yi;
+
+						double xLocation = getXLocation(xi, xsteps, max);
+						double yLocation = getYLocation(yi, ysteps, max);
+						out.write("(PROBE[" + xi + "," + yi + "] " + format.format(xLocation) + " " + format.format(yLocation) + " -> " + arrayIndex + ")");out.write(newline);
+						out.write("G00 X" + format.format(xLocation) + " Y" + format.format(yLocation) + " Z[#2]");out.write(newline); //#2=travel high
+						if (mach3 ) { //MACH3
+							out.write("G31 Z[#4] F25");out.write(newline); // #4 = probe depth
+							out.write("#" + arrayIndex + "=#2002");out.write(newline); //#2000=X, #2001=Y, #2002=Z
+						} else { // EMC2
+							out.write("G38.2 Z[#4] F25");out.write(newline); // #4 = probe depth
+							out.write("#" + arrayIndex + "=#5063");out.write(newline);
+						}
+						out.write("G00 Z[#2]");out.write(newline);//#2=travel high
+
+					}
+				}
+		out.write("( PROBING DONE, remove probe now, then press CYCLE START)");out.write(newline);//#2=travel high
+		out.write("M0");out.write(newline);//#2=travel high
+		
+
+		} catch (IOException e1) {
+			logError("cannot write header for g-code");
+			StringWriter sw = new StringWriter();
+			PrintWriter exout = new PrintWriter(sw);
+			e1.printStackTrace(exout);
+			exout.flush();
+			exout.close();
+			logError(sw.toString());
+			return;
+		}
+		
+
+		try {
+			ModifyGCode(infile, out, max, xsteps, ysteps, maxdist);
+		} catch (IOException e) {
+			logError("cannot modify g-code");
+			StringWriter sw = new StringWriter();
+			PrintWriter exout = new PrintWriter(sw);
+			e.printStackTrace(exout);
+			exout.flush();
+			exout.close();
+			logError(sw.toString());
+			return;
+		}
+		
+		log("done!");
+		if (graphical) {
+			JOptionPane.showMessageDialog(null, "done!");
+			System.exit(0);
 		}
 	}
 	private static void logError(final String message) {
@@ -338,7 +417,6 @@ public class Main {
 				ystr = format.format(currentY);
 			}
 			String formated = MessageFormat.format(outline.toString(), xstr, ystr, changedZ);
-System.out.println("formated '" + outline.toString() + "' + '" + xstr + "'/'" + ystr + "'/'" + changedZ + "' = '" + formated + "'");
 			out.write(formated);
 		} else {
 			out.write(outline.toString());

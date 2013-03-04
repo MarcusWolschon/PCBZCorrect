@@ -220,6 +220,7 @@ public class Main {
 			if (unit != null && unit.equals(UNIT_MM)) {
 				out.write("#1=50		(Safe height)");out.write(newline);
 				out.write("#2=10		(Travel height)");out.write(newline);
+				out.write("#3=0 		(Z offset)");out.write(newline);
 				out.write("#4=-10		(Probe depth)");out.write(newline);
 			    out.write("");out.write(newline);
 				out.write("(Things you should not change:)");out.write(newline);
@@ -228,6 +229,7 @@ public class Main {
 				// sadly for PCBs we have to default to imperial **** inches
 				out.write("#1=1 		(Safe height)");out.write(newline);
 				out.write("#2=0.5		    (Travel height)");out.write(newline);
+				out.write("#3=0 		(Z offset)");out.write(newline);
 				out.write("#4=-1		(Probe depth)");out.write(newline);
 			    out.write("");out.write(newline);
 				out.write("(Things you should not change:)");out.write(newline);
@@ -241,7 +243,15 @@ public class Main {
 			out.write("");out.write(newline);
 			
 				for (int xi = 0; xi < xsteps; xi++) {
-					for (int yi = 0; yi < ysteps; yi++) {
+					int yiStart = 0;
+					int yiStep = 1;
+					if (xi % 2 == 1) {
+						// reverse direction every uneven row
+						// to optimize travel times
+						yiStart = ysteps - 1;
+						yiStep = -1;
+					}
+					for (int yi = yiStart; yi < ysteps && yi >= 0; yi += yiStep) {
 						int arrayIndex = STARTVARRANGE + xi + xsteps*yi;
 
 						double xLocation = getXLocation(xi, xsteps, max);
@@ -412,7 +422,7 @@ public class Main {
 			String xstr = "";
 			String ystr = "";
 			if (currentX != null && currentY != null) {
-				changedZ = "[" + changedZ + " + " + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps) + "]";
+				changedZ = "[" + changedZ + " + #3 + " + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps) + "]";
 				xstr = format.format(currentX);
 				ystr = format.format(currentY);
 			}
@@ -424,7 +434,7 @@ public class Main {
 
 		// write line
 		if (found && !foundZ) {
-			String changedZ = "[" + format.format(lastZ) + " + " + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps)+ "]";
+			String changedZ = "[" + format.format(lastZ) + " + #3 + " + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps)+ "]";
 			out.write("Z" + changedZ);
 		}
 		out.write(newline);

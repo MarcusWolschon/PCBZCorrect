@@ -46,6 +46,11 @@ import javax.swing.filechooser.FileFilter;
  */
 public class Main {
 
+	/**
+	 * set the max and min to 5% smaller
+     * this will avoid to go over the PCB size if the PCB is already at the (max) size
+	 */
+	private static final double MARGIN = 0;//0.05;
 	private static final double IMPERIAL_TO_SANITY_CONVERSION_FACTOR = 25.4d;
 	/**
 	 * Index of the first g-code variable we're using to store our Z-meassurements.
@@ -181,7 +186,7 @@ public class Main {
 		log("determining dimensions of " + infile.getName() + "...");
 		Rectangle2D max  = null;
 		try {
-		    max = getMaxDimensions(infile);
+		    max = getMaxDimensions(infile, MARGIN);
 		} catch (Exception e) {
 			logError("cannot determine maximum dimensions");
 			PrintWriter out = new PrintWriter(new OutputStreamWriter(System.err));
@@ -193,7 +198,7 @@ public class Main {
 			}
 			return;
 		}
-		String msg = "dimensions: "
+		String msg = "dimensions with  margins : "
 		+ "(" + max.getMinX() + "," + max.getMinY() + unit + ") - "
 		+ "(" + max.getMaxX() + "," + max.getMaxY() + unit + ")"
 		+ "(width=" + max.getWidth() + ", height=" + max.getHeight() + unit + ")";
@@ -232,6 +237,7 @@ public class Main {
 				out.write("#2=10		(Travel height)");out.write(newline);
 				out.write("#3=0 		(Z offset)");out.write(newline);
 				out.write("#4=-10		(Probe depth)");out.write(newline);
+				out.write("#5=400		(Probe plunge feedrate)");out.write(newline);
 			    out.write("");out.write(newline);
 				out.write("(Things you should not change:)");out.write(newline);
 				out.write("G21		(mm)");out.write(newline);
@@ -241,6 +247,7 @@ public class Main {
 				out.write("#2=0.5		    (Travel height)");out.write(newline);
 				out.write("#3=0 		(Z offset)");out.write(newline);
 				out.write("#4=-1		(Probe depth)");out.write(newline);
+				out.write("#5=25		(Probe plunge feedrate)");out.write(newline);
 			    out.write("");out.write(newline);
 				out.write("(Things you should not change:)");out.write(newline);
 				out.write("G20		(inch)");out.write(newline);
@@ -269,10 +276,10 @@ public class Main {
 						out.write("(PROBE[" + xi + "," + yi + "] " + format.format(xLocation) + " " + format.format(yLocation) + " -> " + arrayIndex + ")");out.write(newline);
 						out.write("G00 X" + format.format(xLocation) + " Y" + format.format(yLocation) + " Z[#2]");out.write(newline); //#2=travel high
 						if (mach3 ) { //MACH3
-							out.write("G31 Z[#4] F25");out.write(newline); // #4 = probe depth
+							out.write("G31 Z[#4] F[#5]");out.write(newline); // #4 = probe depth
 							out.write("#" + arrayIndex + "=#2002");out.write(newline); //#2000=X, #2001=Y, #2002=Z
 						} else { // EMC2
-							out.write("G38.2 Z[#4] F25");out.write(newline); // #4 = probe depth
+							out.write("G38.2 Z[#4] F[#5]");out.write(newline); // #4 = probe depth
 							out.write("#" + arrayIndex + "=#5063");out.write(newline);
 						}
 						out.write("G00 Z[#2]");out.write(newline);//#2=travel high
@@ -583,7 +590,7 @@ public class Main {
 	 * @return
 	 * @throws IOException
 	 */
-	private static Rectangle2D getMaxDimensions(File infile) throws IOException {
+	private static Rectangle2D getMaxDimensions(final File infile, final double margins) throws IOException {
 		BufferedReader in = new BufferedReader(new FileReader(infile));
 		String line = null;
 		double maxX = Double.MIN_VALUE;
@@ -618,8 +625,17 @@ public class Main {
 			}
 		}
 		in.close();
+		// set the max and min to 5% smaller
+		// this will avoid to go over the PCB size if the PCB is already at the (max) size
+		double marginX = (maxX-minX)* margins;
+		double marginY =  (maxY-minY)* margins;
+		double minXmargin = minX + marginX;
+		double maxXmargin = maxX - marginX;
+		double minYmargin = minY + marginY;
+		double maxYmargin = maxY - marginY;
 		
-		Rectangle2D max=  new Rectangle2D.Double(convert(minX), convert(minY), convert(maxX - minX), convert(maxY - minY));
+//		Rectangle2D max=  new Rectangle2D.Double(minX, minY, maxX - minX, maxY - minY);
+		Rectangle2D max=  new Rectangle2D.Double(minXmargin, minYmargin, maxXmargin - minXmargin, maxYmargin - minYmargin);
 		return max;
 	}
 	/**

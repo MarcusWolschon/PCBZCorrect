@@ -46,6 +46,7 @@ import javax.swing.filechooser.FileFilter;
  */
 public class Main {
 
+	private static final double IMPERIAL_TO_SANITY_CONVERSION_FACTOR = 25.4d;
 	/**
 	 * Index of the first g-code variable we're using to store our Z-meassurements.
 	 */
@@ -62,6 +63,7 @@ public class Main {
 	 */
 	private static JTextArea textarea;
 	private static JCheckBox checkboxMach3;
+	private static JCheckBox checkboxConvert;
 	private static JTextField inputGridX;
 	private static JTextField inputGridY;
 	private static JFrame gui;
@@ -71,6 +73,11 @@ public class Main {
 	private static boolean mach3 = true;
 	private static int xsteps = 5;
 	private static int ysteps = 5;
+	/**
+	 * True to force metric output even if the input is imperial.
+	 * (Converting distances and speeds.)
+	 */
+	private static boolean convertToMetric = false;
 	
 	private static void initGUI(final String[] args) {
 		gui = new JFrame();
@@ -90,6 +97,7 @@ public class Main {
 			@Override
 			public void actionPerformed(ActionEvent arg0) {
 				mach3 = !checkboxMach3.isSelected();
+				convertToMetric = checkboxConvert.isSelected();
 				xsteps = Integer.parseInt(inputGridX.getText());
 				ysteps = Integer.parseInt(inputGridY.getText());
 				doWork(args, true);
@@ -105,6 +113,8 @@ public class Main {
 		north.add(inputGridY); north.add(new JLabel("Probe grid Y"));
 		checkboxMach3 = new JCheckBox();
 		north.add(checkboxMach3); north.add(new JLabel("EMC2 instead of MACH3"));
+		checkboxConvert = new JCheckBox();
+		north.add(checkboxConvert); north.add(new JLabel("Convert to metric (if needed)"));
 		gui.getContentPane().add(north, BorderLayout.NORTH);
 
 		gui.addWindowListener(new WindowAdapter() {
@@ -350,22 +360,32 @@ public class Main {
 			boolean found = false;
 			boolean foundZ = false;
 			try {
+				// break up line into tokens
+				// handle each token and reassemble the line
+				// if X, Y or Z coordinates are present, 
+				// set found=true and/or foundZ=true and insert
+				// placeholders X={0}, Y={1}, Z={2} to make line
+				// a MessageFormat
 				while (tokens.hasMoreTokens()) {
 					String token = tokens.nextToken();
-					if (token.startsWith("X")) {
+					if (token.startsWith("G21") && convertToMetric) {
+						token = token.replaceAll("G21",  "G20");
+					} else if (token.startsWith("X")) {
 						oldX = currentX;
-						currentX = Double.parseDouble(token.substring(1));
+						currentX = convert(Double.parseDouble(token.substring(1)));
 						token = "X{0}";
 						found = true;
-						//break;
 					} else if (token.startsWith("Y")) {
 						oldY = currentY;
-						currentY = Double.parseDouble(token.substring(1));
+						currentY = convert(Double.parseDouble(token.substring(1)));
 						token = "Y{1}";
 						found = true;
-						//break;
+					} else if (token.startsWith("F") && convertToMetric) {
+						oldY = currentY;
+						double currentSpeed = convert(Double.parseDouble(token.substring(1)));
+						token = "F" + format.format(currentSpeed);
 					} else if (token.startsWith("Z")) {
-						lastZ = Double.parseDouble(token.substring(1));
+						lastZ = convert(Double.parseDouble(token.substring(1)));
 						if (currentX == null || currentY == null) {
 							if (lastZ < 0) {
 								logError("Code contains a Z value < 0 before the first X or Y value.");
@@ -433,7 +453,7 @@ public class Main {
 		}
 
 		// write line
-		if (found && !foundZ) {
+		if (found && !foundZ && lastZ < Double.MAX_VALUE) {
 			String changedZ = "[" + format.format(lastZ) + " + #3 + " + getInterpolatedZ(currentX, currentY, max, xsteps, ysteps)+ "]";
 			out.write("Z" + changedZ);
 		}
@@ -557,7 +577,8 @@ public class Main {
 
 	/**
 	 * Read the file and find the maximum and mimumum physical dimensions.
-	 * Also sets {@link #unit} as a side effect.
+	 * Also sets {@link #unit} as a side effect.<br/>
+	 * Does conversion.
 	 * @param infile
 	 * @return
 	 * @throws IOException
@@ -598,7 +619,19 @@ public class Main {
 		}
 		in.close();
 		
-		Rectangle2D max=  new Rectangle2D.Double(minX, minY, maxX - minX, maxY - minY);
+		Rectangle2D max=  new Rectangle2D.Double(convert(minX), convert(minY), convert(maxX - minX), convert(maxY - minY));
 		return max;
+	}
+	/**
+	 * Convert the given imperial distance/speed into metric if needed.
+	 * If no conversion is needed, return unchanged.
+	 * @param distance
+	 * @return
+	 */
+	private static double convert(final double distance) {
+		if (convertToMetric && unit.equals(UNIT_INCH)) {
+			return distance * IMPERIAL_TO_SANITY_CONVERSION_FACTOR;
+		}
+		return distance;
 	}
 }

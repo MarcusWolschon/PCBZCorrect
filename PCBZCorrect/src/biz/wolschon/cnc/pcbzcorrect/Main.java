@@ -47,6 +47,12 @@ import javax.swing.filechooser.FileFilter;
 public class Main {
 
 	/**
+	 * Minimum value we will allow.
+	 * This is a safeguard against a bug with CAMBAM.
+	 */
+	private static final double MINVALUE = 0.0001;
+	
+	/**
 	 * set the max and min to 5% smaller
      * this will avoid to go over the PCB size if the PCB is already at the (max) size
 	 */
@@ -86,7 +92,7 @@ public class Main {
 	
 	private static void initGUI(final String[] args) {
 		gui = new JFrame();
-		gui.setTitle("PCBZCorrect");
+		gui.setTitle("PCBZCorrect V1.02");
 		BorderLayout mainLayout = new BorderLayout();
 		gui.setLayout(mainLayout);
 		
@@ -482,6 +488,13 @@ public class Main {
 		double ylength = lastY - max.getMinY();
 		double xstep = max.getWidth() / (xsteps - 1);
 		double ystep = max.getHeight() / (ysteps - 1);
+
+		if (Math.abs(xlength) < MINVALUE) {
+			xlength = 0;
+		}
+		if (Math.abs(ylength) < MINVALUE) {
+			ylength = 0;
+		}
 
 		if (xlength < 0) {
 			throw new IllegalArgumentException("xlength(=" + xlength + "=lastX(" + lastX + ")-minX(" + max.getMinX() + ")) < 0");
